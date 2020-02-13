@@ -1,0 +1,1 @@
+default[:atop][:interval] = "30"
