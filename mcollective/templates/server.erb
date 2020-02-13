@@ -1,0 +1,28 @@
+## mcollective client -- server.erb: Managed by Puppet
+
+topicprefix = /topic/
+main_collective = mcollective
+collectives = mcollective
+libdir = /usr/libexec/mcollective
+logfile = /var/log/mcollective.log
+loglevel = debug
+daemonize = 1
+direct_addressing = 1
+
+# Plugins
+securityprovider = psk
+plugin.psk = unset
+
+plugin.service.hasstatus = 1
+plugin.service.hasrestart = 1
+
+connector = stomp
+plugin.stomp.host = <%= mco_host %>
+plugin.stomp.port = 61613
+plugin.stomp.user = guest
+plugin.stomp.password = guest
+
+# Facts
+##factsource = yaml
+##plugin.yaml = /etc/mcollective/facts.yaml
+factsource = facter

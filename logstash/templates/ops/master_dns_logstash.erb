@@ -1,0 +1,34 @@
+## master_dns_logstash.erb: Managed by Puppet
+
+## filter
+filter {
+    mutate{
+        replace => ["@source_host", "<%= fqdn %>"]
+    }
+}
+
+## output
+output {
+    stdout { }
+    elasticsearch_http {
+        host => "kibana01.ops"
+        port => "9200"
+    }
+}
+
+## input
+input {
+    stdin {
+        type => "stdin-type"
+    }
+
+    file {
+        type => "syslog"
+
+        path => [ 
+            "/var/log/*.log",
+            "/var/log/messages", 
+            "/var/log/syslog" ]
+    }
+
+}
