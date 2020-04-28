@@ -1,0 +1,62 @@
+---
+- name: Install jira
+  hosts: localhost
+  connection: local
+  become: yes
+
+  tasks:
+  - name: install fontconfig
+    package:
+      name: fontconfig
+      state: present
+
+  - name: Download jira-core
+    get_url:
+      url: https://www.atlassian.com/software/jira/downloads/binary/atlassian-jira-core-8.7.0-RC01-x64.bin
+      dest: /tmp/
+      mode: 'a+x'
+
+  - name: Create .install4j directory
+    file:
+      path: /tmp/.install4j
+      state: directory
+
+  - name: Install response.varfile for unattended installation
+    blockinfile:
+      create: yes
+      path: /tmp/.install4j/response.varfile
+      block: |
+        # install4j response file for Jira Core 8.7.0-m0005
+        app.install.service$Boolean=true
+        app.jiraHome=/var/atlassian/application-data/jira
+        existingInstallationDir=/opt/Jira Core
+        launch.application$Boolean=false
+        portChoice=default
+        sys.adminRights$Boolean=true
+        sys.confirmedUpdateInstallationString=false
+        sys.installationDir=/opt/atlassian/jira
+        sys.languageId=en
+
+  - name: Run jira-core installer
+    command: /tmp/atlassian-jira-core-8.7.0-RC01-x64.bin -q -varfile /tmp/.install4j/response.varfile
+
+  - name: Unarchive MySQL JDBC driver tar.gz
+    unarchive:
+      src: https://dev.mysql.com/get/Downloads/Connector-J/mysql-connector-java-5.1.48.tar.gz
+      dest: /tmp/
+      remote_src: yes
+
+  - name: Copy MySQL JDBC driver
+    copy:
+      src: /tmp/mysql-connector-java-5.1.48/mysql-connector-java-5.1.48.jar
+      dest: /opt/atlassian/jira/lib/
+
+  - name: Copy MySQL JDBC driver bin
+    copy:
+      src: /tmp/mysql-connector-java-5.1.48/mysql-connector-java-5.1.48-bin.jar
+      dest: /opt/atlassian/jira/lib/
+
+  - name: Start service jira
+    service:
+      name: jira
+      state: started

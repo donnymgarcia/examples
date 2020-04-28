@@ -1,0 +1,273 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Metadata:
+  License: Apache-2.0
+Description: 'AWS CloudFormation Template for automated JIRA install'
+Parameters:
+  VPC:
+    Type: AWS::EC2::VPC::Id
+    Description: Choose which VPC the security groups should be deployed to
+  DBAvailabilityZone1:
+    Type: AWS::EC2::AvailabilityZone::Name
+    Description: Choose which AZ RDS should be deployed to for DBCidr1 (1/2) * RDS subnets must cover at least 2 availability zones *
+  DBAvailabilityZone2:
+    Type: AWS::EC2::AvailabilityZone::Name
+    Description: Choose which AZ RDS should be deployed to for DBCidr2 (2/2) * RDS subnets must cover at least 2 availability zones *
+  DBCidr:
+    Description: The IP address range that can be used to access RDS
+    Type: String
+    MinLength: 9
+    MaxLength: 18
+    Default: 0.0.0.0/0
+    AllowedPattern: (\d{1,3})\.(\d{1,3})\.(\d{1,3})\.(\d{1,3})/(\d{1,2})
+    ConstraintDescription: must be a valid IP CIDR range of the form x.x.x.x/x.
+  DBCidr1:
+    Description: The CIDR block for RDS subnet (1/2)
+    Type: String
+    MinLength: 9
+    MaxLength: 18
+    Default: 172.30.3.0/24
+    AllowedPattern: (\d{1,3})\.(\d{1,3})\.(\d{1,3})\.(\d{1,3})/(\d{1,2})
+    ConstraintDescription: must be a valid IP CIDR range of the form x.x.x.x/x.
+  DBCidr2:
+    Description: The CIDR block for RDS subnet (2/2)
+    Type: String
+    MinLength: 9
+    MaxLength: 18
+    Default: 172.30.4.0/24
+    AllowedPattern: (\d{1,3})\.(\d{1,3})\.(\d{1,3})\.(\d{1,3})/(\d{1,2})
+    ConstraintDescription: must be a valid IP CIDR range of the form x.x.x.x/x.
+  DBName:
+    Default: jiradb
+    Description: The database name (must begin with a letter and contain only alphanumeric)
+    Type: String
+    MinLength: '1'
+    MaxLength: '64'
+    AllowedPattern: '[a-zA-Z][a-zA-Z0-9]*'
+    ConstraintDescription: must begin with a letter and contain only alphanumeric
+      characters.
+  DBUser:
+    Default: jiradbuser
+    Description: The database admin account username (must begin with a letter and contain only alphanumeric)
+    Type: String
+    MinLength: '1'
+    MaxLength: '16'
+    AllowedPattern: '[a-zA-Z][a-zA-Z0-9]*'
+    ConstraintDescription: must begin with a letter and contain only alphanumeric
+      characters.
+  DBPassword:
+    NoEcho: 'true'
+    Description: The database admin account password (must contain only alphanumeric characters)
+    Type: String
+    MinLength: '8'
+    MaxLength: '41'
+    AllowedPattern: '[a-zA-Z0-9]*'
+    ConstraintDescription: must contain only alphanumeric characters.
+  InstanceAvailabilityZone:
+    Type: AWS::EC2::AvailabilityZone::Name
+    Description: Choose which AZ instance should be deployed to for InstanceCidr
+  InstanceCidr:
+    Description: The CIDR block for Instance subnet
+    Type: String
+    MinLength: 9
+    MaxLength: 18
+    Default: 172.30.5.0/24
+    AllowedPattern: (\d{1,3})\.(\d{1,3})\.(\d{1,3})\.(\d{1,3})/(\d{1,2})
+    ConstraintDescription: must be a valid IP CIDR range of the form x.x.x.x/x.
+  KeyName:
+    Description: Name of an existing EC2 KeyPair to enable SSH access to the instance
+    Type: AWS::EC2::KeyPair::KeyName
+    ConstraintDescription: must be the name of an existing EC2 KeyPair.
+  InstanceType:
+    Description: WebServer EC2 instance type
+    Type: String
+    Default: t3.large
+    AllowedValues: [t3.large]
+    ConstraintDescription: must be a valid EC2 instance type.
+  HTTPCidr:
+    Description: The IP address range that can be used to HTTP to the EC2 instances
+    Type: String
+    MinLength: 9
+    MaxLength: 18
+    Default: 0.0.0.0/0
+    AllowedPattern: (\d{1,3})\.(\d{1,3})\.(\d{1,3})\.(\d{1,3})/(\d{1,2})
+    ConstraintDescription: must be a valid IP CIDR range of the form x.x.x.x/x.
+  SSHCidr:
+    Description: The IP address range that can be used to SSH to the EC2 instances
+    Type: String
+    MinLength: 9
+    MaxLength: 18
+    Default: 0.0.0.0/0
+    AllowedPattern: (\d{1,3})\.(\d{1,3})\.(\d{1,3})\.(\d{1,3})/(\d{1,2})
+    ConstraintDescription: must be a valid IP CIDR range of the form x.x.x.x/x.
+  LatestAmiId:
+    Type:  'AWS::SSM::Parameter::Value<AWS::EC2::Image::Id>'
+    Default: '/aws/service/ami-amazon-linux-latest/amzn2-ami-hvm-x86_64-gp2'
+Resources:
+  DBInstance:
+    Type: AWS::RDS::DBInstance
+    Properties:
+      DBName: !Ref 'DBName'
+      AllocatedStorage: '100'
+      DBInstanceClass: db.t2.small
+      Engine: MySQL
+      MasterUsername: !Ref 'DBUser'
+      MasterUserPassword: !Ref 'DBPassword'
+      DBSubnetGroupName: !Ref 'DBSubnetGroup'
+      VPCSecurityGroups: [!GetAtt DBSecurityGroup.GroupId]
+      DBParameterGroupName: !Ref 'DBParameterGroup'
+  DBParameterGroup:
+    Type: "AWS::RDS::DBParameterGroup"
+    Properties: 
+      Description: Params required for JIRA install
+      Family: mysql5.7
+      Parameters: 
+        sql_mode: IGNORE_SPACE
+        character_set_server: utf8mb4
+        character_set_database: utf8mb4
+  DBSubnet1:
+    Type: AWS::EC2::Subnet
+    Properties:
+      AvailabilityZone: !Ref 'DBAvailabilityZone1'
+      CidrBlock: !Ref 'DBCidr1'
+      VpcId: !Ref 'VPC'
+  DBSubnet2:
+    Type: AWS::EC2::Subnet
+    Properties:
+      AvailabilityZone: !Ref 'DBAvailabilityZone2'
+      CidrBlock: !Ref 'DBCidr2'
+      VpcId: !Ref 'VPC'
+  DBSubnetGroup:
+    Type: AWS::RDS::DBSubnetGroup
+    Properties:
+      DBSubnetGroupDescription: DB SubnetGroup
+      SubnetIds:
+        - !Ref 'DBSubnet1'
+        - !Ref 'DBSubnet2'
+  DBSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: Enable MYSQL access via 3306
+      VpcId: !Ref 'VPC'
+      SecurityGroupIngress:
+      - IpProtocol: tcp
+        FromPort: '3306'
+        ToPort: '3306'
+        CidrIp: !Ref 'DBCidr'
+  EC2Instance:
+    Type: AWS::EC2::Instance
+    Properties:
+      InstanceType: !Ref 'InstanceType'
+      SecurityGroupIds: [!GetAtt 'InstanceSecurityGroup.GroupId']
+      KeyName: !Ref 'KeyName'
+      ImageId: !Ref 'LatestAmiId'
+      SubnetId: !Ref 'InstanceSubnet'
+      UserData:
+        Fn::Base64: 
+          !Sub |
+            #!/bin/bash -xe
+            yum update -y
+            amazon-linux-extras install ansible2 -y
+            cat <<'EOF' >>main.yml
+            ---
+            - name: Install jira
+              hosts: localhost
+              connection: local
+              become: yes
+
+              tasks:
+              - name: Install fontconfig
+                package:
+                  name: fontconfig
+                  state: present
+
+              - name: Download jira-core
+                get_url:
+                  url: https://www.atlassian.com/software/jira/downloads/binary/atlassian-jira-core-8.7.0-RC01-x64.bin
+                  dest: /tmp/
+                  mode: 'a+x'
+
+              - name: Create .install4j directory
+                file:
+                  path: /tmp/.install4j
+                  state: directory
+
+              - name: Install response.varfile for unattended installation
+                blockinfile:
+                  create: yes
+                  path: /tmp/.install4j/response.varfile
+                  block: |
+                    # install4j response file for Jira Core 8.7.0-m0005
+                    app.install.service$Boolean=true
+                    app.jiraHome=/var/atlassian/application-data/jira
+                    existingInstallationDir=/opt/Jira Core
+                    launch.application$Boolean=false
+                    portChoice=default
+                    sys.adminRights$Boolean=true
+                    sys.confirmedUpdateInstallationString=false
+                    sys.installationDir=/opt/atlassian/jira
+                    sys.languageId=en
+
+              - name: Run jira-core installer
+                command: /tmp/atlassian-jira-core-8.7.0-RC01-x64.bin -q -varfile /tmp/.install4j/response.varfile
+
+              - name: Unarchive MySQL JDBC driver tar.gz
+                unarchive:
+                  src: https://dev.mysql.com/get/Downloads/Connector-J/mysql-connector-java-5.1.48.tar.gz
+                  dest: /tmp/
+                  remote_src: yes
+
+              - name: Copy MySQL JDBC driver
+                copy:
+                  src: /tmp/mysql-connector-java-5.1.48/mysql-connector-java-5.1.48.jar
+                  dest: /opt/atlassian/jira/lib/
+
+              - name: Copy MySQL JDBC driver bin
+                copy:
+                  src: /tmp/mysql-connector-java-5.1.48/mysql-connector-java-5.1.48-bin.jar
+                  dest: /opt/atlassian/jira/lib/
+
+              - name: Start jira service
+                command: /etc/init.d/jira start
+            EOF
+            ansible-playbook main.yml
+  InstanceSubnet:
+    Type: AWS::EC2::Subnet
+    Properties:
+      AvailabilityZone: !Ref 'InstanceAvailabilityZone'
+      CidrBlock: !Ref 'InstanceCidr'
+      VpcId: !Ref 'VPC'
+      MapPublicIpOnLaunch: true
+  InstanceSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: Enable SSH access via 22 and HTTP access via 8080
+      VpcId: !Ref 'VPC'
+      SecurityGroupIngress:
+      - IpProtocol: tcp
+        FromPort: 22
+        ToPort: 22
+        CidrIp: !Ref 'SSHCidr'
+      - IpProtocol: tcp
+        FromPort: 8080
+        ToPort: 8080
+        CidrIp: !Ref 'HTTPCidr'
+Outputs:
+  JDBCConnectionString:
+    Description: JDBC connection string for the database
+    Value: !Join ['', ['jdbc:mysql://', !GetAtt [DBInstance, Endpoint.Address], ':', !GetAtt [
+          DBInstance, Endpoint.Port], /, !Ref 'DBName']]
+  InstanceId:
+    Description: InstanceId of the newly created EC2 instance
+    Value: !Ref 'EC2Instance'
+  AZ:
+    Description: Availability Zone of the newly created EC2 instance
+    Value: !GetAtt [EC2Instance, AvailabilityZone]
+  PublicDNS:
+    Description: Public DNSName of the newly created EC2 instance
+    Value: !GetAtt [EC2Instance, PublicDnsName]
+  PublicIP:
+    Description: Public IP address of the newly created EC2 instance
+    Value: !GetAtt [EC2Instance, PublicIp]
+  JiraURL:
+    Description: JIRA URL
+    Value: !Join ['', ['http://', !GetAtt [EC2Instance, PublicDnsName], ':8080']]
